@@ -1,14 +1,37 @@
 ---
-language: 
-  - en
-pretty_name: "AI/Technology Articles"
-tags:
-  - temporal series data
-  - language data
+language:
+- en
 license: mit
 task_categories:
-  - text-generation
-  - feature-extraction
+- text-generation
+- feature-extraction
+pretty_name: AI/Technology Articles
+tags:
+- temporal series data
+- language data
+configs:
+- config_name: default
+  data_files:
+  - split: train
+    path: data/train-*
+dataset_info:
+  features:
+  - name: id
+    dtype: int64
+  - name: year
+    dtype: int64
+  - name: title
+    dtype: string
+  - name: url
+    dtype: string
+  - name: text
+    dtype: string
+  splits:
+  - name: train
+    num_bytes: 123475673
+    num_examples: 2429
+  download_size: 25153621
+  dataset_size: 123475673
 ---
 
 # AI/Tech Dataset
