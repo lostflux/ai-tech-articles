@@ -59,15 +59,15 @@ dataset = load_dataset("siavava/ai-tech-articles")
 df = dataset["train"].to_pandas()
 ```
 
-> [!NOTE]
-> You do not need to clone this repo.
->
-> HuggingFace will download the dataset for you, the first time that you load it,
-> and cache it so it does not need to re-download it again
-> (unless it detects a change upstream).
+You do not need to clone this repo.
+HuggingFace will download the dataset for you, the first time that you load it,
+and cache it locally so it does not need to re-download it again
+(unless it detects a change upstream).
 
 ## File Structure
 
-- [analytics.ipynb](analytics.ipynb) - Notebook containing some details about the dataset and how to load it.
-- [data/index.parquet](./index.csv) - compressed [parquet](https://www.databricks.com/glossary/what-is-parquet) containing the data.
+- [`analytics.ipynb`](analytics.ipynb) - Notebook containing some details about the dataset.
+- [`example.ipynb`](example.ipynb) - A minimal notebook that loads in the dataset and converts to Pandas.
+- [`raw.csv`](raw.csv) - The raw data, in CSV format.
+- `data/*.parquet`- compressed [parquet](https://www.databricks.com/glossary/what-is-parquet) containing the data.
 - For raw text files, see the [scraper repo](https://github.com/siavava/scrape.hs) on GitHub.
