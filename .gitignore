@@ -5,5 +5,4 @@ all
 dictionary
 *.txt
 trash
-*.py
 urls
