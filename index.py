@@ -21,14 +21,18 @@ def index_pages():
   """
   docID = 0
 
-  with open("raw.csv", "w") as csv_file, open("urls", "w") as urls:
+  with open("raw2.csv", "w") as csv_file:
     writer = csv.writer(csv_file)
     writer.writerow(["id", "year", "title", "url", "text"])
     while True:
       try:
-        with open(f"../log/{docID}", "r") as meta, open(f"../log/{docID}.txt", "r") as data:
+        with open(f"../data/log/{docID}", "r") as meta, open(f"../data/log/{docID}.txt", "r") as data:
           title = meta.readline().strip()
           year = meta.readline().strip()
+          # if year starts with '|', append to title and read next line
+          if year.startswith("|"):
+            title += " " + year
+            year = meta.readline().strip()
           url = meta.readline().strip()
           text = data.read()
 
@@ -36,13 +40,12 @@ def index_pages():
           data.close()
 
           if year and 2000 <= int(year) <= 2023:
-
             print(f"Indexing: {docID}")
             writer.writerow([docID, year, f'"{title}"', f'"{url}"', f'"{text}"'])
-            # urls.write(f"{url}\n")
           docID += 1
       except Exception as e:
         print(e)
+        print(f"{docID = }")
         break
         
   print("Done.")
@@ -81,7 +84,6 @@ def categorize():
             f.write(f"{title}\n{year}\n{url}\n\n{text}")
             f.close()
           years[year] += 1
-
         docID += 1
         
     except:
