@@ -25,7 +25,7 @@ import re
 import subprocess
 import sys
 
-from ai_tech_articles import HF_REPO_ID, REPO_ROOT, load_dotenv
+from ai_tech_articles import HF_REPO_ID, REPO_ROOT, lfs_pointer, load_dotenv
 
 HF_REMOTE = "hf"
 HF_URL = f"https://huggingface.co/datasets/{HF_REPO_ID}"
@@ -86,7 +86,12 @@ def verify_parquet() -> None:
   }
   for p in sorted((REPO_ROOT / "data").glob("*.parquet")):
     rel = p.relative_to(REPO_ROOT).as_posix()
-    local_sha = hashlib.sha256(p.read_bytes()).hexdigest()
+    pointer = lfs_pointer(p)
+    local_sha = (
+      pointer.get("oid", "").removeprefix("sha256:")
+      if pointer
+      else hashlib.sha256(p.read_bytes()).hexdigest()
+    )
     if remote.get(rel) != local_sha:
       sys.exit(
         f"error: {rel} on the Hub does not match the local file (hub {remote.get(rel)}, local {local_sha})"
