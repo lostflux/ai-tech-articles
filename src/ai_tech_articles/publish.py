@@ -141,6 +141,9 @@ def main() -> None:
       git("commit", "-q", "-m", message)
   ensure_hf_remote()
   git("lfs", "install", "--local")
+  git("fetch", "-q", "origin", "main")
+  if git("rev-list", "--count", "HEAD..origin/main") != "0":
+    git("rebase", "-q", "origin/main")
   env = hf_credential_env()
   subprocess.run(["git", "-C", str(REPO_ROOT), "push", HF_REMOTE, "main"], check=True, env=env)
   subprocess.run(["git", "-C", str(REPO_ROOT), "push", "origin", "main"], check=True)
