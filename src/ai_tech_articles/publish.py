@@ -129,9 +129,7 @@ def main() -> None:
     if HF_REMOTE in git("remote").split()
     else "?"
   )
-  print(
-    f"push: {HF_REMOTE} (with LFS bytes) and origin (pointer only); {ahead} commit(s) not yet on {HF_REMOTE}"
-  )
+  print(f"push: {HF_REMOTE} and origin (LFS objects included); {ahead} commit(s) not yet on {HF_REMOTE}")
   if args.dry_run:
     git("reset", "-q", "--", "data", "README.md")
     return
@@ -142,6 +140,7 @@ def main() -> None:
     else:
       git("commit", "-q", "-m", message)
   ensure_hf_remote()
+  git("lfs", "install", "--local")
   env = hf_credential_env()
   subprocess.run(["git", "-C", str(REPO_ROOT), "push", HF_REMOTE, "main"], check=True, env=env)
   subprocess.run(["git", "-C", str(REPO_ROOT), "push", "origin", "main"], check=True)
