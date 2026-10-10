@@ -33,7 +33,7 @@ from urllib.parse import urlsplit
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ai_tech_articles import REPO_ROOT, SCHEMA
+from ai_tech_articles import REPO_ROOT, SCHEMA, shard_file
 
 HERE = REPO_ROOT
 
@@ -269,7 +269,7 @@ def published(data_dir: Path) -> tuple[set[str], int, int]:
   next_id = 0
   rows = 0
   for p in shard_paths(data_dir):
-    t = pq.read_table(p, columns=["id", "url"])
+    t = pq.read_table(shard_file(p), columns=["id", "url"])
     urls.update(normalize_url(u) for u in t["url"].to_pylist())
     if t.num_rows:
       next_id = max(next_id, max(t["id"].to_pylist()) + 1)
@@ -281,7 +281,9 @@ def update_readme(readme: Path, data_dir: Path) -> None:
   """Refresh the dataset card's counts from every shard in `data_dir`."""
   paths = shard_paths(data_dir)
   table = (
-    pa.concat_tables([pq.read_table(p) for p in paths]) if paths else pa.Table.from_pydict({}, schema=SCHEMA)
+    pa.concat_tables([pq.read_table(shard_file(p)) for p in paths])
+    if paths
+    else pa.Table.from_pydict({}, schema=SCHEMA)
   )
   download_size = sum(p.stat().st_size for p in paths)
   content = readme.read_text(encoding="utf-8")
