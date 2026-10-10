@@ -1,8 +1,23 @@
+# data
 *.csv
-.DS_Store
+*.txt
 .total
 all
 dictionary
-*.txt
 trash
 urls
+
+# python
+.venv/
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+.ruff_cache/
+.DS_Store
+
+# secrets
+.env
+.env.*
+
+# the parquet lives on HuggingFace; GitHub holds code, notebooks and the card
+data/*.parquet
