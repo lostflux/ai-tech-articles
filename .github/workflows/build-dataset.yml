@@ -1,0 +1,81 @@
+# Rebuild the parquet from the scraper's raw data and publish it to
+# HuggingFace. Runs when the scraper repo reports a finished crawl
+# (repository_dispatch from lostflux/functional-scraper), on demand, and as a
+# safety net once a week.
+#
+# Secrets (this repo):
+#   HF_TOKEN       write token for datasets/siavava/ai-tech-articles
+#   ACTOR_TOKEN  optional: PAT of the `evilalt` utility account with
+#                  "Contents: read and write" here, so the dataset-card
+#                  commit is pushed by evilalt rather than github-actions
+#                  (the author is evilalt either way).
+#
+# The parquet itself is not committed here (GitHub LFS quotas); HuggingFace
+# is the canonical home of the data. Only README.md (row counts in the
+# dataset card) is committed back.
+name: build dataset
+
+on:
+  repository_dispatch:
+    types: [crawl-finished]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-dataset
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ai-tech-articles
+          token: ${{ secrets.ACTOR_TOKEN || github.token }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: lostflux/functional-scraper
+          path: functional-scraper
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          working-directory: ai-tech-articles
+          enable-cache: true
+
+      - name: build parquet
+        working-directory: ai-tech-articles
+        run: |
+          uv sync --no-dev
+          uv run ai-tech-articles-build --scraper-dir ../functional-scraper --update-readme
+
+      - name: publish to HuggingFace
+        working-directory: ai-tech-articles
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run ai-tech-articles-publish --dry-run
+          uv run ai-tech-articles-publish --message "dataset build ${{ github.event.client_payload.run_id || github.run_id }}"
+
+      - name: commit dataset card
+        working-directory: ai-tech-articles
+        run: |
+          git config user.name evilalt
+          git config user.email amittaijoel@gmail.com
+          git add README.md
+          git diff --cached --quiet && { echo "card unchanged"; exit 0; }
+          git commit -m "dataset card: $(date -u +%F)"
+          git push
+
+      - name: summary
+        if: always()
+        working-directory: ai-tech-articles
+        run: |
+          echo '### dataset' >> "$GITHUB_STEP_SUMMARY"
+          sed -n '/dataset_info/,/^---/p' README.md | grep -E 'num_examples|download_size' >> "$GITHUB_STEP_SUMMARY" || true
