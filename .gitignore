@@ -19,5 +19,3 @@ __pycache__/
 .env
 .env.*
 
-# the parquet lives on HuggingFace; GitHub holds code, notebooks and the card
-data/*.parquet

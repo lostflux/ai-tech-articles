@@ -89,38 +89,41 @@ and cache it locally so it does not need to re-download it again
 
 This repo is a small Python project (`src/ai_tech_articles`). It turns the raw
 output of the [scraper](https://github.com/lostflux/functional-scraper) into the
-parquet that HuggingFace serves, and uploads it. The scraper repo is expected
+parquet that HuggingFace serves and publishes it. The scraper repo is expected
 as a sibling directory (`../functional-scraper`); pass `--scraper-dir` otherwise.
 
 ```bash
-uv sync                                   # or: pip install -e .
-uv run ai-tech-articles-build --update-readme   # legacy log/ + articles/*.jsonl.zst -> data/train-*.parquet
-uv run ai-tech-articles-publish --dry-run       # what would be uploaded
-HF_TOKEN=... uv run ai-tech-articles-publish    # upload README + parquet
+uv sync                                        # or: pip install -e .
+uv run ai-tech-articles-build --update-readme  # legacy log/ + articles/*.jsonl.zst -> data/train-*.parquet
+uv run ai-tech-articles-publish --dry-run      # what would be committed and pushed
+uv run ai-tech-articles-publish                # commit the parquet + card, push to both remotes
 ```
 
 `build` filters by year (2000 to now), drops empty texts, deduplicates by
-normalised URL across both sources, and applies the scraper's strong-term
-relevance rule (`strong_targets` in the scraper's `config.yml`) to new rows;
-`--no-relevance-filter` keeps everything that was crawled. `--update-readme`
-refreshes the row and byte counts in this file's front matter.
+normalised URL, applies the scraper's strong-term relevance rule
+(`strong_targets` in the scraper's `config.yml`) to rows collected since 2023
+(`--no-relevance-filter` keeps everything crawled), and numbers rows
+sequentially in collection order. `--update-readme` refreshes the counts in
+this file's front matter.
 
-Inside Python, `ai_tech_articles.load_dataframe()` returns the dataset as a
-DataFrame from the local parquet when present, else from HuggingFace.
+One git history, two remotes. `publish` commits `data/*.parquet` (a Git LFS
+pointer, per `.gitattributes`) and `README.md`, pushes to the HuggingFace
+remote `hf` (which stores the parquet bytes) and to GitHub `origin` with
+`--no-verify`, so GitHub gets the same commit but only the pointer and never
+spends LFS quota. Both remotes show identical history; GitHub simply cannot
+serve the parquet bytes, which is fine because HuggingFace is where the data
+is consumed. Commit messages follow `(type): description`; `publish` refuses
+anything else. Inside Python, `ai_tech_articles.load_dataframe()` returns the
+dataset from the local parquet when present, else from HuggingFace.
 
 ### Automation
 
-`.github/workflows/build-dataset.yml` does the same build and publish on a
-runner: it is triggered by the scraper repo's daily crawl workflow
-(`repository_dispatch`, event `crawl-finished`), on demand, and weekly as a
-safety net. It needs one secret in this repo, `HF_TOKEN`, with write access
-to the HuggingFace dataset; it commits the refreshed dataset card back here.
-The parquet is not tracked in this GitHub repo (`data/*.parquet` is
-git-ignored); HuggingFace is its canonical home. `publish` mirrors the git
-tree plus the parquet to the Hub, except `.gitignore`: the Hub applies a
-repo's `.gitignore` to uploads and would silently drop the parquet. Locally, put the token in a
-git-ignored `.env` (`HF_TOKEN=hf_…`) and `ai-tech-articles-publish` picks it
-up.
+`.github/workflows/build-dataset.yml` runs build and publish on a runner:
+triggered by the scraper repo's daily crawl (`repository_dispatch`, event
+`crawl-finished`), on demand, and weekly as a safety net. Secrets in this
+repo: `HF_TOKEN` (write access to the dataset) and optionally `ACTOR_TOKEN`
+(PAT of the `evilalt` utility account) so the push to GitHub is made by that
+account. Locally, put the token in a git-ignored `.env` (`HF_TOKEN=hf_…`).
 
 - `data/*.parquet`: compressed [parquet](https://www.databricks.com/glossary/what-is-parquet) containing the data.
 - For the raw text files, see the [scraper repo](https://github.com/lostflux/functional-scraper) on GitHub.

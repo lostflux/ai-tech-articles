@@ -10,9 +10,9 @@
 #                  commit is pushed by evilalt rather than github-actions
 #                  (the author is evilalt either way).
 #
-# The parquet itself is not committed here (GitHub LFS quotas); HuggingFace
-# is the canonical home of the data. Only README.md (row counts in the
-# dataset card) is committed back.
+# One git history, two remotes: publish commits the parquet (LFS pointer) and
+# the dataset card, pushes to HuggingFace (which stores the parquet bytes) and
+# to GitHub with --no-verify (pointer only, no LFS quota).
 name: build dataset
 
 on:
@@ -38,6 +38,7 @@ jobs:
         with:
           path: ai-tech-articles
           token: ${{ secrets.ACTOR_TOKEN || github.token }}
+          fetch-depth: 0
 
       - uses: actions/checkout@v4
         with:
@@ -55,23 +56,15 @@ jobs:
           uv sync --no-dev
           uv run ai-tech-articles-build --scraper-dir ../functional-scraper --update-readme
 
-      - name: publish to HuggingFace
+      - name: publish (commit parquet + card, push to hf and origin)
         working-directory: ai-tech-articles
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          uv run ai-tech-articles-publish --dry-run
-          uv run ai-tech-articles-publish --message "(update): refresh dataset from crawl ${{ github.event.client_payload.run_id || github.run_id }}"
-
-      - name: commit dataset card
-        working-directory: ai-tech-articles
-        run: |
           git config user.name evilalt
           git config user.email amittaijoel@gmail.com
-          git add README.md
-          git diff --cached --quiet && { echo "card unchanged"; exit 0; }
-          git commit -m "(update): refresh dataset card for $(date -u +%F)"
-          git push
+          uv run ai-tech-articles-publish --dry-run
+          uv run ai-tech-articles-publish --message "(update): refresh dataset from crawl ${{ github.event.client_payload.run_id || github.run_id }}"
 
       - name: summary
         if: always()
