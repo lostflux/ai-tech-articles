@@ -57,6 +57,44 @@ def load_dotenv(path: Path | None = None) -> list[str]:
   return loaded
 
 
+LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1"
+
+
+def lfs_pointer(path: Path) -> dict[str, str] | None:
+  """The parsed pointer if `path` is a Git LFS pointer file, else None.
+
+  A checkout without LFS objects (GitHub Actions by default) leaves pointer
+  text where the parquet should be.
+  """
+  try:
+    with open(path, "rb") as fh:
+      head = fh.read(512)
+  except OSError:
+    return None
+  if not head.startswith(LFS_POINTER_PREFIX):
+    return None
+  fields = dict(line.split(" ", 1) for line in head.decode("utf-8", "replace").splitlines() if " " in line)
+  return fields
+
+
+def shard_file(path: Path) -> Path:
+  """A readable parquet file for `path`: itself, or the Hub's copy when the
+  checkout only has the LFS pointer (verified against the pointer's sha256)."""
+  pointer = lfs_pointer(path)
+  if pointer is None:
+    return path
+  import hashlib
+
+  from huggingface_hub import hf_hub_download
+
+  local = Path(hf_hub_download(HF_REPO_ID, f"data/{path.name}", repo_type="dataset"))
+  want = pointer.get("oid", "").removeprefix("sha256:")
+  got = hashlib.sha256(local.read_bytes()).hexdigest()
+  if want and got != want:
+    raise RuntimeError(f"{path.name}: Hub copy sha256 {got} does not match the LFS pointer {want}")
+  return local
+
+
 def local_parquet_files() -> list[Path]:
   """The parquet shard(s) in ``data/``, if the repo is checked out."""
   return sorted(DATA_DIR.glob("train-*.parquet"))
@@ -73,7 +111,7 @@ def load_table(local_first: bool = True) -> pa.Table:
   if files:
     import pyarrow.parquet as pq
 
-    return pa.concat_tables([pq.read_table(f) for f in files])
+    return pa.concat_tables([pq.read_table(shard_file(f)) for f in files])
   from datasets import load_dataset
 
   return load_dataset(HF_REPO_ID, split="train").data.table
