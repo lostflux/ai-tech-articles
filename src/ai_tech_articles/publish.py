@@ -2,11 +2,11 @@
 """
 Publish the dataset: one git history, two remotes.
 
-Commits `data/*.parquet` (an LFS pointer; see .gitattributes) and README.md,
-then pushes the branch to the HuggingFace remote (`hf`, which receives the
-LFS bytes) and to GitHub (`origin`, pointer only: `--no-verify` skips the LFS
-upload so GitHub's LFS quota is never used). GitHub and the Hub therefore show
-identical commits; only the parquet bytes differ in where they live.
+Commits `data/*.parquet` (LFS pointers; see .gitattributes) and README.md,
+then pushes the branch, LFS objects included, to the HuggingFace remote (`hf`)
+and to GitHub (`origin`). Both remotes show identical history. GitHub's LFS
+quota (1 GB free) is what the incremental shards protect: a daily publish adds
+one small shard; only `build --full` re-uploads everything.
 
 Usage:
   ai-tech-articles-publish [--message "(update): …"] [--as-bot] [--dry-run]
@@ -144,7 +144,7 @@ def main() -> None:
   ensure_hf_remote()
   env = hf_credential_env()
   subprocess.run(["git", "-C", str(REPO_ROOT), "push", HF_REMOTE, "main"], check=True, env=env)
-  subprocess.run(["git", "-C", str(REPO_ROOT), "push", "--no-verify", "origin", "main"], check=True)
+  subprocess.run(["git", "-C", str(REPO_ROOT), "push", "origin", "main"], check=True)
   print(f"pushed: {git('rev-parse', '--short', 'HEAD')} to {HF_REMOTE} and origin")
   verify_parquet()
 

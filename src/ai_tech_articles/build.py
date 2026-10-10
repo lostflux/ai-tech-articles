@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """
-Build the dataset parquet from the scraper's raw output.
+Build the dataset parquet shards from the scraper's raw output.
 
 Sources:
   A. legacy (Haskell scraper, 2023): <scraper>/data/log/N and N.txt pairs
   B. new (Rust scraper):             <scraper>/data/articles/*.jsonl.zst
 
+The dataset is a set of immutable shards `data/train-NNNNN.parquet`. A normal
+build appends one new shard holding only the rows that are not yet published
+(by URL), with ids continuing from the last shard, so a daily publish adds a
+few megabytes and never rewrites history. `--full` rebuilds everything into
+a single shard (use it when the relevance rule or schema changes; it costs a
+full re-upload to both remotes).
+
 Usage:
-  ai-tech-articles-build [--scraper-dir ../functional-scraper]
-                         [--out data/train-00000-of-00001.parquet] [--update-readme]
+  ai-tech-articles-build [--scraper-dir ../functional-scraper] [--full] [--update-readme]
   (or: python -m ai_tech_articles.build …)
 """
 
@@ -189,10 +195,16 @@ def is_relevant(rule: dict, title: str, text: str) -> bool:
   return bool(tfound) or bool(lfound) or dense
 
 
-def build(scraper_dir: Path, relevance: dict | None = None):
+def build(
+  scraper_dir: Path,
+  relevance: dict | None = None,
+  published_urls: set[str] | None = None,
+  start_id: int = 0,
+):
+  """Rows not yet published, numbered from `start_id` in storage order."""
   current_year = dt.date.today().year
   dropped = Counter()
-  seen_urls: set[str] = set()
+  seen_urls: set[str] = set(published_urls or ())
   seen_ids: set[int] = set()
   rows = []
 
@@ -224,7 +236,11 @@ def build(scraper_dir: Path, relevance: dict | None = None):
         continue
       key = normalize_url(rec["url"])
       if key in seen_urls:
-        dropped[f"duplicate url ({rec['source']})"] += 1
+        dropped[
+          "already published"
+          if published_urls and key in published_urls
+          else f"duplicate url ({rec['source']})"
+        ] += 1
         continue
       if rec["id"] in seen_ids:
         dropped[f"duplicate id ({rec['source']})"] += 1
@@ -235,7 +251,7 @@ def build(scraper_dir: Path, relevance: dict | None = None):
 
   # Number rows in storage order so a later crawl only appends and existing ids keep their place.
   rows.sort(key=lambda r: r["id"])
-  for i, r in enumerate(rows):
+  for i, r in enumerate(rows, start=start_id):
     r["id"] = i
   by_source = Counter(r["source"] for r in rows)
   columns = {name: [r[name] for r in rows] for name in SCHEMA.names}
@@ -243,7 +259,31 @@ def build(scraper_dir: Path, relevance: dict | None = None):
   return table, dropped, by_source
 
 
-def update_readme(readme: Path, table: pa.Table, download_size: int) -> None:
+def shard_paths(data_dir: Path) -> list[Path]:
+  return sorted(data_dir.glob("train-*.parquet"))
+
+
+def published(data_dir: Path) -> tuple[set[str], int, int]:
+  """(normalised urls, next id, rows) across the existing shards."""
+  urls: set[str] = set()
+  next_id = 0
+  rows = 0
+  for p in shard_paths(data_dir):
+    t = pq.read_table(p, columns=["id", "url"])
+    urls.update(normalize_url(u) for u in t["url"].to_pylist())
+    if t.num_rows:
+      next_id = max(next_id, max(t["id"].to_pylist()) + 1)
+      rows += t.num_rows
+  return urls, next_id, rows
+
+
+def update_readme(readme: Path, data_dir: Path) -> None:
+  """Refresh the dataset card's counts from every shard in `data_dir`."""
+  paths = shard_paths(data_dir)
+  table = (
+    pa.concat_tables([pq.read_table(p) for p in paths]) if paths else pa.Table.from_pydict({}, schema=SCHEMA)
+  )
+  download_size = sum(p.stat().st_size for p in paths)
   content = readme.read_text(encoding="utf-8")
   m = re.match(r"^---\n(.*?)\n---\n", content, re.S)
   if not m:
@@ -296,7 +336,9 @@ def update_readme(readme: Path, table: pa.Table, download_size: int) -> None:
 def main() -> None:
   ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   ap.add_argument("--scraper-dir", type=Path, default=HERE.parent / "functional-scraper")
-  ap.add_argument("--out", type=Path, default=Path("data/train-00000-of-00001.parquet"))
+  ap.add_argument(
+    "--full", action="store_true", help="rebuild everything into one shard instead of appending"
+  )
   ap.add_argument("--update-readme", action="store_true", help="rewrite README.md front matter stats")
   ap.add_argument(
     "--no-relevance-filter",
@@ -305,29 +347,41 @@ def main() -> None:
   )
   args = ap.parse_args()
 
-  out = args.out if args.out.is_absolute() else HERE / args.out
+  data_dir = HERE / "data"
+  data_dir.mkdir(parents=True, exist_ok=True)
   scraper_dir = args.scraper_dir.resolve()
-
   relevance = None if args.no_relevance_filter else load_relevance(scraper_dir)
-  table, dropped, by_source = build(scraper_dir, relevance)
 
-  out.parent.mkdir(parents=True, exist_ok=True)
-  for stale in out.parent.glob("train-*.parquet"):
-    if stale.resolve() != out.resolve():
-      print(f"removing stale shard {stale.name}")
+  if args.full:
+    for stale in shard_paths(data_dir):
+      print(f"removing shard {stale.name}")
       stale.unlink()
-  pq.write_table(table, out, compression="zstd")
-  size = out.stat().st_size
+    urls, next_id, before = set(), 0, 0
+  else:
+    urls, next_id, before = published(data_dir)
+  table, dropped, by_source = build(scraper_dir, relevance, urls, next_id)
 
-  print(f"\nrows: {table.num_rows}")
-  print("by source: " + ", ".join(f"{k}={v}" for k, v in sorted(by_source.items())))
-  years = Counter(table["year"].to_pylist())
-  print("by year:   " + " ".join(f"{y}:{c}" for y, c in sorted(years.items())))
+  print(f"\nalready published: {before:,} rows in {len(shard_paths(data_dir))} shard(s)")
+  print(
+    f"new rows: {table.num_rows:,}"
+    + (
+      " (by source: " + ", ".join(f"{k}={v}" for k, v in sorted(by_source.items())) + ")"
+      if table.num_rows
+      else ""
+    )
+  )
   print("dropped:   " + (", ".join(f"{k}={v}" for k, v in sorted(dropped.items())) or "none"))
-  print(f"wrote {out} ({size / 1e6:.1f} MB, in-memory {table.nbytes / 1e6:.1f} MB)")
+  if table.num_rows:
+    out = data_dir / f"train-{len(shard_paths(data_dir)):05d}.parquet"
+    pq.write_table(table, out, compression="zstd")
+    years = Counter(table["year"].to_pylist())
+    print("by year:   " + " ".join(f"{y}:{c}" for y, c in sorted(years.items())))
+    print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB); ids {table['id'][0]}–{table['id'][-1]}")
+  else:
+    print("nothing to add")
 
   if args.update_readme:
-    update_readme(HERE / "README.md", table, size)
+    update_readme(HERE / "README.md", data_dir)
     print("updated README.md front matter")
 
 

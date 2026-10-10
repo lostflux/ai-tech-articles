@@ -30,10 +30,10 @@ dataset_info:
     dtype: string
   splits:
   - name: train
-    num_bytes: 551642589
+    num_bytes: 551657975
     num_examples: 61543
   download_size: 193334034
-  dataset_size: 551642589
+  dataset_size: 551657975
 ---
 
 # AI/Tech Dataset
@@ -94,7 +94,8 @@ as a sibling directory (`../functional-scraper`); pass `--scraper-dir` otherwise
 
 ```bash
 uv sync                                        # or: pip install -e .
-uv run ai-tech-articles-build --update-readme  # legacy log/ + articles/*.jsonl.zst -> data/train-*.parquet
+uv run ai-tech-articles-build --update-readme  # append a shard with the rows not yet published
+uv run ai-tech-articles-build --full --update-readme  # rebuild everything into one shard
 uv run ai-tech-articles-publish --dry-run      # what would be committed and pushed
 uv run ai-tech-articles-publish                # commit the parquet + card, push to both remotes
 ```
@@ -106,15 +107,17 @@ normalised URL, applies the scraper's strong-term relevance rule
 sequentially in collection order. `--update-readme` refreshes the counts in
 this file's front matter.
 
-One git history, two remotes. `publish` commits `data/*.parquet` (a Git LFS
-pointer, per `.gitattributes`) and `README.md`, pushes to the HuggingFace
-remote `hf` (which stores the parquet bytes) and to GitHub `origin` with
-`--no-verify`, so GitHub gets the same commit but only the pointer and never
-spends LFS quota. Both remotes show identical history; GitHub simply cannot
-serve the parquet bytes, which is fine because HuggingFace is where the data
-is consumed. Commit messages follow `(type): description`; `publish` refuses
-anything else. Inside Python, `ai_tech_articles.load_dataframe()` returns the
-dataset from the local parquet when present, else from HuggingFace.
+One git history, two remotes. `publish` commits `data/*.parquet` (Git LFS
+pointers, per `.gitattributes`) and `README.md`, then pushes the same commit,
+LFS objects included, to the HuggingFace remote `hf` and to GitHub `origin`.
+The dataset is a set of immutable shards (`data/train-NNNNN.parquet`): a
+normal `build` appends one shard with only the rows not yet published, ids
+continuing from the last shard, so a daily publish costs a few megabytes on
+each remote. `build --full` rebuilds everything into one shard for schema or
+rule changes; it re-uploads the whole dataset, which matters for GitHub's
+1 GB free LFS quota. Commit messages follow `(type): description`; `publish`
+refuses anything else. Inside Python, `ai_tech_articles.load_dataframe()`
+returns the dataset from the local shards when present, else from HuggingFace.
 
 ### Automation
 
