@@ -32,7 +32,7 @@ dataset_info:
   - name: train
     num_bytes: 551661059
     num_examples: 61544
-  download_size: 15568
+  download_size: 264
   dataset_size: 551661059
 ---
 
