@@ -285,7 +285,8 @@ def update_readme(readme: Path, data_dir: Path) -> None:
     if paths
     else pa.Table.from_pydict({}, schema=SCHEMA)
   )
-  download_size = sum(p.stat().st_size for p in paths)
+  # Real file sizes even when the checkout only has LFS pointers.
+  download_size = sum(shard_file(p).stat().st_size for p in paths)
   content = readme.read_text(encoding="utf-8")
   m = re.match(r"^---\n(.*?)\n---\n", content, re.S)
   if not m:
