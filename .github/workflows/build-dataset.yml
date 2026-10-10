@@ -61,7 +61,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           uv run ai-tech-articles-publish --dry-run
-          uv run ai-tech-articles-publish --message "dataset build ${{ github.event.client_payload.run_id || github.run_id }}"
+          uv run ai-tech-articles-publish --message "(update): refresh dataset from crawl ${{ github.event.client_payload.run_id || github.run_id }}"
 
       - name: commit dataset card
         working-directory: ai-tech-articles
@@ -70,7 +70,7 @@ jobs:
           git config user.email amittaijoel@gmail.com
           git add README.md
           git diff --cached --quiet && { echo "card unchanged"; exit 0; }
-          git commit -m "dataset card: $(date -u +%F)"
+          git commit -m "(update): refresh dataset card for $(date -u +%F)"
           git push
 
       - name: summary

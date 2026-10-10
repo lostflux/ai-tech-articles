@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -54,10 +55,26 @@ def mirror_patterns() -> list[str]:
   return sorted(set(files))
 
 
+def default_message() -> str:
+  """`(update): refresh dataset (N rows)` from the local parquet."""
+  try:
+    import pyarrow.parquet as pq
+
+    rows = sum(pq.read_metadata(p).num_rows for p in (HERE / "data").glob("*.parquet"))
+    return f"(update): refresh dataset ({rows:,} rows)"
+  except Exception:  # noqa: BLE001
+    return "(update): refresh dataset"
+
+
 def main() -> None:
   ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   ap.add_argument("--repo-id", default="siavava/ai-tech-articles")
-  ap.add_argument("--message", default="update dataset")
+  ap.add_argument(
+    "--message",
+    default=None,
+    help='commit subject; defaults to "(update): refresh dataset (N rows)". '
+    "Use the repo convention: (feat|fix|update|cleanup): <imperative description>",
+  )
   ap.add_argument("--only-data", action="store_true", help="upload just README.md and data/*.parquet")
   ap.add_argument("--dry-run", action="store_true", help="list files that would be uploaded and exit")
   args = ap.parse_args()
@@ -77,6 +94,9 @@ def main() -> None:
   files = sorted(p.relative_to(HERE).as_posix() for pat in allow for p in HERE.glob(pat) if p.is_file())
   if not files:
     sys.exit("error: nothing to upload (run ai-tech-articles-build first)")
+  message = args.message or default_message()
+  if not re.match(r"^\((feat|fix|update|cleanup)\): \S", message):
+    sys.exit(f"error: commit message {message!r} does not follow '(type): description'")
 
   print(f"{'would upload' if args.dry_run else 'uploading'} to datasets/{args.repo_id}:")
   for f in files:
@@ -92,7 +112,7 @@ def main() -> None:
     folder_path=str(HERE),
     allow_patterns=allow,
     delete_patterns=delete,
-    commit_message=args.message,
+    commit_message=message,
   )
   print(f"done: {commit}")
   verify_parquet(api, args.repo_id, files)
