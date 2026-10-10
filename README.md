@@ -26,17 +26,21 @@ dataset_info:
     dtype: string
   - name: text
     dtype: string
+  - name: date
+    dtype: string
   splits:
   - name: train
-    num_bytes: 180820047
-    num_examples: 17092
-  download_size: 81702923
-  dataset_size: 180820047
+    num_bytes: 551642589
+    num_examples: 61543
+  download_size: 193334034
+  dataset_size: 551642589
 ---
 
 # AI/Tech Dataset
 
-This dataset is a collection of AI/tech articles scraped from the web.
+This dataset is a collection of AI/tech articles scraped from the web: the 2023
+corpus collected by the original Haskell scraper plus everything the Rust
+crawler has added since (2023 onwards, with full publication dates).
 
 It's hosted on [HuggingFace Datasets](https://huggingface.co/datasets/siavava/ai-tech-articles), so it is easier to load in and work with.
 
@@ -64,10 +68,59 @@ HuggingFace will download the dataset for you, the first time that you load it,
 and cache it locally so it does not need to re-download it again
 (unless it detects a change upstream).
 
-## File Structure
+## Columns
 
-- [`analytics.ipynb`](analytics.ipynb) - Notebook containing some details about the dataset.
-- [`example.ipynb`](example.ipynb) - A minimal notebook that loads in the dataset and converts to Pandas.
-- [`raw.csv`](raw.csv) - The raw data, in CSV format.
-- `data/*.parquet`- compressed [parquet](https://www.databricks.com/glossary/what-is-parquet) containing the data.
-- For raw text files, see the [scraper repo](https://github.com/siavava/scrape.hs) on GitHub.
+| column | type | notes |
+| --- | --- | --- |
+| `id` | int64 | row number: 0-based and sequential, in collection order (the 2023 rows first). A new crawl only appends, so existing ids keep their place; removing earlier rows (a stricter relevance rule) renumbers. `url` is the stable key across releases |
+| `year` | int64 | publication year |
+| `title` | string | article title |
+| `url` | string | article url |
+| `text` | string | article text, one paragraph per line |
+| `date` | string | publication date (`YYYY-MM-DD`); set for everything collected since 2023, null for the original 2023 collection |
+
+## Notebooks
+
+- [`example.ipynb`](example.ipynb): load the dataset and look at a few rows.
+- [`analytics.ipynb`](analytics.ipynb): counts by year, month and
+  domain, article lengths, sample titles.
+
+## Building the dataset (maintainers)
+
+This repo is a small Python project (`src/ai_tech_articles`). It turns the raw
+output of the [scraper](https://github.com/lostflux/functional-scraper) into the
+parquet that HuggingFace serves, and uploads it. The scraper repo is expected
+as a sibling directory (`../functional-scraper`); pass `--scraper-dir` otherwise.
+
+```bash
+uv sync                                   # or: pip install -e .
+uv run ai-tech-articles-build --update-readme   # legacy log/ + articles/*.jsonl.zst -> data/train-*.parquet
+uv run ai-tech-articles-publish --dry-run       # what would be uploaded
+HF_TOKEN=... uv run ai-tech-articles-publish    # upload README + parquet
+```
+
+`build` filters by year (2000 to now), drops empty texts, deduplicates by
+normalised URL across both sources, and applies the scraper's strong-term
+relevance rule (`strong_targets` in the scraper's `config.yml`) to new rows;
+`--no-relevance-filter` keeps everything that was crawled. `--update-readme`
+refreshes the row and byte counts in this file's front matter.
+
+Inside Python, `ai_tech_articles.load_dataframe()` returns the dataset as a
+DataFrame from the local parquet when present, else from HuggingFace.
+
+### Automation
+
+`.github/workflows/build-dataset.yml` does the same build and publish on a
+runner: it is triggered by the scraper repo's daily crawl workflow
+(`repository_dispatch`, event `crawl-finished`), on demand, and weekly as a
+safety net. It needs one secret in this repo, `HF_TOKEN`, with write access
+to the HuggingFace dataset; it commits the refreshed dataset card back here.
+The parquet is not tracked in this GitHub repo (`data/*.parquet` is
+git-ignored); HuggingFace is its canonical home. `publish` mirrors the git
+tree plus the parquet to the Hub, except `.gitignore`: the Hub applies a
+repo's `.gitignore` to uploads and would silently drop the parquet. Locally, put the token in a
+git-ignored `.env` (`HF_TOKEN=hf_…`) and `ai-tech-articles-publish` picks it
+up.
+
+- `data/*.parquet`: compressed [parquet](https://www.databricks.com/glossary/what-is-parquet) containing the data.
+- For the raw text files, see the [scraper repo](https://github.com/lostflux/functional-scraper) on GitHub.
