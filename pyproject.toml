@@ -1,0 +1,53 @@
+[project]
+name = "ai-tech-articles"
+version = "0.2.0"
+description = "Build, publish and load the AI/tech articles dataset (siavava/ai-tech-articles on HuggingFace)"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Amittai Siavava", email = "amittaijoel@outlook.com" }]
+requires-python = ">=3.10"
+dependencies = [
+  "pyarrow>=14",
+  "zstandard>=0.19",
+  "pyyaml>=6",
+  "huggingface_hub>=0.25",
+]
+
+[project.optional-dependencies]
+hf = ["datasets>=2.19"]
+
+[project.scripts]
+ai-tech-articles-build = "ai_tech_articles.build:main"
+ai-tech-articles-publish = "ai_tech_articles.publish:main"
+
+[project.urls]
+Dataset = "https://huggingface.co/datasets/siavava/ai-tech-articles"
+Scraper = "https://github.com/lostflux/functional-scraper"
+
+[dependency-groups]
+dev = [
+  "jupyter>=1.0",
+  "nbconvert>=7",
+  "pandas>=2",
+  "matplotlib>=3.8",
+  "datasets>=2.19",
+  "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_tech_articles"]
+
+[tool.ruff]
+line-length = 110
+indent-width = 2
+target-version = "py310"
+
+[tool.ruff.format]
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
