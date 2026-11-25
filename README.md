@@ -30,10 +30,10 @@ dataset_info:
     dtype: string
   splits:
   - name: train
-    num_bytes: 589932688
-    num_examples: 66407
-  download_size: 208552668
-  dataset_size: 589932688
+    num_bytes: 590766933
+    num_examples: 66510
+  download_size: 208888561
+  dataset_size: 590766933
 ---
 
 # AI/Tech Dataset
